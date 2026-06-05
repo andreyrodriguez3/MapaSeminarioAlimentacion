@@ -232,6 +232,81 @@ header {
   border-radius: 50%; background: rgba(245,196,0,.5);
   animation: pulse 2s ease-out infinite;
 }
+
+/* ─── MOBILE ─────────────────────────────────────────────────────────────── */
+.sb-handle {
+  display: none;
+  width: 40px; height: 4px;
+  background: #d0d4de; border-radius: 2px;
+  margin: 10px auto 4px; flex-shrink: 0;
+}
+
+#btn-list-toggle {
+  display: none;
+  align-items: center; gap: 7px;
+  position: fixed; bottom: 18px; left: 50%;
+  transform: translateX(-50%);
+  background: var(--ucr-blue); color: white;
+  border: 2px solid var(--ucr-gold);
+  border-radius: 50px; padding: 11px 22px;
+  font-size: .83rem; font-weight: 700;
+  box-shadow: 0 4px 20px rgba(0,0,0,.35);
+  cursor: pointer; z-index: 800; white-space: nowrap;
+  transition: background .15s, transform .15s;
+}
+#btn-list-toggle:active { transform: translateX(-50%) scale(.95); }
+
+#sidebar-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 800; opacity: 0;
+  pointer-events: none;
+  transition: opacity .32s;
+}
+#sidebar-overlay.visible { opacity: 1; pointer-events: auto; }
+
+@media (max-width: 640px) {
+  header {
+    height: auto; min-height: 50px;
+    padding: 8px 12px; gap: 8px; flex-wrap: nowrap;
+  }
+  .header-text h1 { font-size: .82rem; }
+  .header-text p  { display: none; }
+  .header-stat    { padding: 4px 9px; min-width: 50px; }
+  .header-stat .val { font-size: 1rem; }
+  #hdr-stat-radius { display: none; }
+  .hdr-btn { padding: 5px 10px; font-size: .73rem; }
+
+  #body { position: relative; }
+  #map  { width: 100%; }
+
+  #sidebar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    width: 100%; min-width: unset;
+    height: 72vh;
+    border-right: none;
+    border-radius: 16px 16px 0 0;
+    border-top: 1px solid #dde3ed;
+    transform: translateY(100%);
+    transition: transform .32s cubic-bezier(.4,0,.2,1);
+    z-index: 900;
+    box-shadow: 0 -6px 24px rgba(0,0,0,.2);
+  }
+  #sidebar.open { transform: translateY(0); }
+
+  .sb-handle    { display: block; }
+  #btn-list-toggle { display: flex; }
+  #sidebar-overlay { display: block; }
+
+  .place-item { padding: 12px 14px; }
+  .sort-btn   { padding: 5px 12px; font-size: .74rem; }
+  .cat-pill   { font-size: .73rem; padding: 5px 10px; }
+
+  /* Zoom controls clear the bottom FAB */
+  .leaflet-bottom.leaflet-right { bottom: 0; }
+}
 </style>
 </head>
 <body>
@@ -254,13 +329,14 @@ header {
     </div>
     <div class="header-spacer"></div>
     <div class="header-stat"><span class="val" id="hdr-total">–</span><span class="lbl">lugares</span></div>
-    <div class="header-stat"><span class="val">6 km</span><span class="lbl">radio</span></div>
+    <div class="header-stat" id="hdr-stat-radius"><span class="val">6 km</span><span class="lbl">radio</span></div>
     <button class="hdr-btn" id="btn-center">⌖ Centrar</button>
   </header>
 
   <div id="body">
     <!-- Sidebar -->
     <div id="sidebar">
+      <div class="sb-handle"></div>
       <!-- Search -->
       <div class="sb-search">
         <div class="search-wrap">
@@ -300,6 +376,12 @@ header {
     <div id="map"></div>
   </div>
 </div>
+
+<!-- Mobile FAB & overlay -->
+<button id="btn-list-toggle" aria-label="Ver lista de lugares">
+  📋 Ver lista · <span id="fab-count">–</span> lugares
+</button>
+<div id="sidebar-overlay"></div>
 
 <script>
 /* ── Config ───────────────────────────────────────────────────────────────── */
@@ -535,6 +617,7 @@ function renderList() {
       const p = allPlaces.find(x => x.id === item.dataset.id);
       if (!p) return;
       highlightedId = p.id;
+      closeSidebar();
       map.flyTo([p.lat, p.lon], 17, { duration: 0.8 });
       // Expand cluster if needed
       clusterGroup.zoomToShowLayer(markerMap[p.id], () => {
@@ -627,6 +710,29 @@ document.getElementById('search-input').addEventListener('input', () => {
   renderList(); renderMarkers();
 });
 
+/* ── Mobile sidebar toggle ───────────────────────────────────────────────── */
+const sidebar   = document.getElementById('sidebar');
+const fabBtn    = document.getElementById('btn-list-toggle');
+const sbOverlay = document.getElementById('sidebar-overlay');
+
+function openSidebar() {
+  sidebar.classList.add('open');
+  sbOverlay.classList.add('visible');
+  const n = document.getElementById('hdr-total').textContent;
+  fabBtn.innerHTML = '✕ Cerrar lista';
+}
+function closeSidebar() {
+  sidebar.classList.remove('open');
+  sbOverlay.classList.remove('visible');
+  const n = document.getElementById('hdr-total').textContent;
+  fabBtn.innerHTML = `📋 Ver lista · <span id="fab-count">${n}</span> lugares`;
+}
+
+fabBtn.addEventListener('click', () =>
+  sidebar.classList.contains('open') ? closeSidebar() : openSidebar()
+);
+sbOverlay.addEventListener('click', closeSidebar);
+
 /* ── Overpass fetch ──────────────────────────────────────────────────────── */
 setProgress(20);
 
@@ -675,6 +781,8 @@ fetch('https://overpass-api.de/api/interpreter', {
 
   // Stats
   document.getElementById('hdr-total').textContent = allPlaces.length;
+  const fabCountEl = document.getElementById('fab-count');
+  if (fabCountEl) fabCountEl.textContent = allPlaces.length;
   document.getElementById('stat-visible').textContent = allPlaces.length;
   const catSet = [...new Set(allPlaces.map(p => p.cat))];
   document.getElementById('stat-cats').textContent = catSet.length;
