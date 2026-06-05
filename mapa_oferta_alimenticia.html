@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Oferta Alimenticia · Recinto de Tacares UCR</title>
+
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- MarkerCluster -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+<style>
+:root {
+  --ucr-blue: #002f6c;
+  --ucr-gold: #f5c400;
+  --sidebar-w: 310px;
+  --header-h: 58px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; background: #f0f2f5; color: #1a1a2e; }
+
+/* ─── LOADING ─────────────────────────────────────────────────────────────── */
+#loading {
+  position: fixed; inset: 0; z-index: 9999;
+  background: var(--ucr-blue);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+  color: white; transition: opacity .4s;
+}
+#loading.hidden { opacity: 0; pointer-events: none; }
+.loader-ring {
+  width: 52px; height: 52px;
+  border: 5px solid rgba(255,255,255,.2);
+  border-top-color: var(--ucr-gold);
+  border-radius: 50%;
+  animation: spin .9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+#loading h2 { font-size: 1.1rem; font-weight: 600; }
+#loading p  { font-size: .82rem; opacity: .65; }
+#load-progress { width: 200px; height: 4px; background: rgba(255,255,255,.2); border-radius: 2px; overflow: hidden; }
+#load-bar { height: 100%; width: 0; background: var(--ucr-gold); border-radius: 2px; transition: width .4s; }
+
+/* ─── LAYOUT ──────────────────────────────────────────────────────────────── */
+#app { display: flex; flex-direction: column; height: 100vh; }
+
+/* ─── HEADER ──────────────────────────────────────────────────────────────── */
+header {
+  height: var(--header-h);
+  background: var(--ucr-blue);
+  display: flex; align-items: center; gap: 14px; padding: 0 20px;
+  box-shadow: 0 2px 12px rgba(0,0,0,.35);
+  flex-shrink: 0; z-index: 500;
+}
+.ucr-logo {
+  background: var(--ucr-gold); color: var(--ucr-blue);
+  font-weight: 900; font-size: .8rem; padding: 5px 9px;
+  border-radius: 5px; white-space: nowrap; letter-spacing: .5px;
+}
+.header-text h1 { color: white; font-size: .98rem; font-weight: 700; line-height: 1.25; }
+.header-text p  { color: rgba(255,255,255,.6); font-size: .72rem; margin-top: 2px; }
+.header-spacer { flex: 1; }
+.header-stat {
+  display: flex; flex-direction: column; align-items: center;
+  background: rgba(255,255,255,.1); border-radius: 8px;
+  padding: 6px 14px; min-width: 64px;
+}
+.header-stat .val { color: var(--ucr-gold); font-size: 1.15rem; font-weight: 800; line-height: 1; }
+.header-stat .lbl { color: rgba(255,255,255,.65); font-size: .65rem; margin-top: 2px; text-align: center; }
+.hdr-btn {
+  background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2);
+  color: white; border-radius: 7px; padding: 6px 13px; cursor: pointer;
+  font-size: .78rem; font-weight: 600; transition: background .15s;
+  white-space: nowrap;
+}
+.hdr-btn:hover { background: rgba(255,255,255,.22); }
+
+/* ─── BODY ────────────────────────────────────────────────────────────────── */
+#body { display: flex; flex: 1; overflow: hidden; }
+
+/* ─── SIDEBAR ─────────────────────────────────────────────────────────────── */
+#sidebar {
+  width: var(--sidebar-w); min-width: 260px;
+  background: white; display: flex; flex-direction: column;
+  border-right: 1px solid #dde3ed; z-index: 200; overflow: hidden;
+}
+
+/* Search */
+.sb-search { padding: 12px 14px 8px; border-bottom: 1px solid #edf0f4; }
+.search-wrap { position: relative; }
+.search-wrap input {
+  width: 100%; padding: 8px 12px 8px 34px;
+  border: 1.5px solid #d6dbe6; border-radius: 8px;
+  font-size: .83rem; outline: none; background: #f8f9fb;
+  transition: border .15s, box-shadow .15s;
+}
+.search-wrap input:focus { border-color: var(--ucr-blue); box-shadow: 0 0 0 3px rgba(0,47,108,.1); }
+.search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: .9rem; opacity: .4; pointer-events: none; }
+
+/* Categories */
+.sb-cats { padding: 8px 14px 6px; border-bottom: 1px solid #edf0f4; }
+.sb-cats-label { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: #8a92a6; margin-bottom: 7px; }
+.cat-grid { display: flex; flex-wrap: wrap; gap: 5px; }
+.cat-pill {
+  display: flex; align-items: center; gap: 5px;
+  padding: 4px 9px; border-radius: 20px; font-size: .72rem; font-weight: 600;
+  cursor: pointer; border: 1.5px solid transparent; transition: all .15s; white-space: nowrap;
+}
+.cat-pill.active { color: white; }
+.cat-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* Stats */
+.sb-stats { padding: 8px 14px; border-bottom: 1px solid #edf0f4; }
+.stats-row { display: flex; gap: 8px; }
+.stat-card {
+  flex: 1; background: #f8f9fb; border-radius: 8px; padding: 8px 10px;
+  text-align: center;
+}
+.stat-card .s-val { font-size: 1.1rem; font-weight: 800; color: var(--ucr-blue); line-height: 1; }
+.stat-card .s-lbl { font-size: .65rem; color: #7a8499; margin-top: 3px; }
+
+/* Sort bar */
+.sb-sort { padding: 6px 14px; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #edf0f4; }
+.sb-sort span { font-size: .72rem; color: #8a92a6; }
+.sort-btn {
+  font-size: .72rem; padding: 3px 9px; border-radius: 12px;
+  border: 1.5px solid #d6dbe6; background: white; cursor: pointer; font-weight: 600;
+  color: #444; transition: all .12s;
+}
+.sort-btn.active { background: var(--ucr-blue); color: white; border-color: var(--ucr-blue); }
+
+/* Place list */
+#place-list { flex: 1; overflow-y: auto; }
+#place-list::-webkit-scrollbar { width: 5px; }
+#place-list::-webkit-scrollbar-thumb { background: #c8cdd8; border-radius: 3px; }
+
+.place-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 14px; cursor: pointer;
+  border-bottom: 1px solid #f2f4f8; transition: background .1s;
+  position: relative;
+}
+.place-item:hover { background: #f4f6ff; }
+.place-item.highlighted { background: #eef2ff; }
+.place-icon {
+  width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem;
+}
+.place-info { flex: 1; min-width: 0; }
+.place-name { font-size: .83rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.place-meta { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.place-type-tag { font-size: .67rem; font-weight: 600; padding: 2px 6px; border-radius: 8px; color: white; }
+.place-dist { font-size: .67rem; color: #8a92a6; }
+.place-dist::before { content: '📍 '; font-size: .6rem; }
+.place-arrow { color: #c5cad6; font-size: .8rem; }
+
+/* Empty state */
+.empty-state { padding: 40px 20px; text-align: center; color: #9aa3b8; }
+.empty-state .emoji { font-size: 2.2rem; margin-bottom: 10px; }
+.empty-state p { font-size: .82rem; }
+
+/* ─── MAP ─────────────────────────────────────────────────────────────────── */
+#map { flex: 1; }
+
+/* Cluster customization */
+.marker-cluster-small,
+.marker-cluster-medium,
+.marker-cluster-large { background-clip: padding-box; }
+.marker-cluster-small  div { background-color: rgba(0,47,108,.75); }
+.marker-cluster-medium div { background-color: rgba(0,47,108,.85); }
+.marker-cluster-large  div { background-color: rgba(0,47,108,.95); }
+.marker-cluster div { color: white; font-weight: 800; }
+
+/* Leaflet controls */
+.leaflet-control-zoom a { border-radius: 6px !important; }
+.leaflet-control-layers { border-radius: 8px !important; }
+
+/* Custom popups */
+.custom-popup .leaflet-popup-content-wrapper {
+  border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,.18); padding: 0;
+}
+.custom-popup .leaflet-popup-content { margin: 0; min-width: 200px; }
+.popup-body { padding: 12px 14px 14px; }
+.popup-header { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+.popup-icon { font-size: 1.4rem; line-height: 1; }
+.popup-title { font-size: .92rem; font-weight: 700; color: #111; line-height: 1.2; }
+.popup-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: .68rem; font-weight: 700; padding: 3px 8px;
+  border-radius: 10px; color: white; margin-top: 3px;
+}
+.popup-details { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.popup-detail { display: flex; gap: 6px; font-size: .75rem; color: #555; align-items: flex-start; }
+.popup-detail .pd-icon { flex-shrink: 0; }
+
+/* Legend control */
+.legend-ctrl {
+  background: white; border-radius: 10px; padding: 10px 13px;
+  box-shadow: 0 2px 12px rgba(0,0,0,.14); font-size: .73rem; min-width: 160px;
+}
+.legend-ctrl h4 { font-size: .75rem; color: var(--ucr-blue); font-weight: 700; margin-bottom: 7px; letter-spacing: .3px; }
+.legend-row { display: flex; align-items: center; gap: 7px; padding: 2px 0; }
+.ld { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+.legend-divider { border: none; border-top: 1px solid #eee; margin: 6px 0; }
+.legend-circle-row { display: flex; align-items: center; gap: 7px; padding: 2px 0; }
+.lc { width: 16px; height: 0; border-top: 2px dashed; flex-shrink: 0; }
+.lc.solid { border-top: 2px solid; }
+
+/* Radius label tooltip */
+.radius-label {
+  background: rgba(0,47,108,.8); color: white; font-size: .7rem; font-weight: 700;
+  padding: 2px 7px; border-radius: 10px; white-space: nowrap; border: none; box-shadow: none;
+}
+.leaflet-tooltip.radius-label::before { display: none; }
+
+/* Recinto pulse */
+@keyframes pulse {
+  0%   { transform: scale(1); opacity: .8; }
+  100% { transform: scale(2.8); opacity: 0; }
+}
+.recinto-pulse {
+  width: 20px; height: 20px; border-radius: 50%;
+  background: rgba(245,196,0,.4); position: relative;
+}
+.recinto-pulse::after {
+  content: ''; position: absolute; inset: 0;
+  border-radius: 50%; background: rgba(245,196,0,.5);
+  animation: pulse 2s ease-out infinite;
+}
+</style>
+</head>
+<body>
+
+<!-- Loading overlay -->
+<div id="loading">
+  <div class="loader-ring"></div>
+  <h2>Cargando mapa…</h2>
+  <p>Consultando OpenStreetMap · Radio 6 km</p>
+  <div id="load-progress"><div id="load-bar"></div></div>
+</div>
+
+<div id="app">
+  <!-- Header -->
+  <header>
+    <div class="ucr-logo">UCR</div>
+    <div class="header-text">
+      <h1>Oferta Alimenticia — Recinto de Tacares</h1>
+      <p>SR0302 Seminario de Realidad Nacional II · Sede de Occidente · I Ciclo 2026</p>
+    </div>
+    <div class="header-spacer"></div>
+    <div class="header-stat"><span class="val" id="hdr-total">–</span><span class="lbl">lugares</span></div>
+    <div class="header-stat"><span class="val">6 km</span><span class="lbl">radio</span></div>
+    <button class="hdr-btn" id="btn-center">⌖ Centrar</button>
+  </header>
+
+  <div id="body">
+    <!-- Sidebar -->
+    <div id="sidebar">
+      <!-- Search -->
+      <div class="sb-search">
+        <div class="search-wrap">
+          <span class="search-icon">🔍</span>
+          <input id="search-input" type="text" placeholder="Buscar establecimiento…"/>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="sb-stats">
+        <div class="stats-row">
+          <div class="stat-card"><div class="s-val" id="stat-visible">–</div><div class="s-lbl">visibles</div></div>
+          <div class="stat-card"><div class="s-val" id="stat-cats">–</div><div class="s-lbl">categorías</div></div>
+          <div class="stat-card"><div class="s-val" id="stat-nearest">–</div><div class="s-lbl">más cercano</div></div>
+        </div>
+      </div>
+
+      <!-- Category pills -->
+      <div class="sb-cats">
+        <div class="sb-cats-label">Filtrar por categoría</div>
+        <div class="cat-grid" id="cat-grid"></div>
+      </div>
+
+      <!-- Sort -->
+      <div class="sb-sort">
+        <span>Ordenar:</span>
+        <button class="sort-btn active" data-sort="name">A–Z</button>
+        <button class="sort-btn" data-sort="dist">Distancia</button>
+        <button class="sort-btn" data-sort="cat">Categoría</button>
+      </div>
+
+      <!-- List -->
+      <div id="place-list"></div>
+    </div>
+
+    <!-- Map -->
+    <div id="map"></div>
+  </div>
+</div>
+
+<script>
+/* ── Config ───────────────────────────────────────────────────────────────── */
+const RECINTO   = [10.042034, -84.299771];
+const RADIUS_M  = 6000;
+const RINGS     = [
+  { r: 1000, color: '#5E9FFF', dash: '6 5', label: '1 km' },
+  { r: 3000, color: '#3B7DD8', dash: '8 5', label: '3 km' },
+  { r: 6000, color: '#002f6c', dash: null,  label: '6 km (radio de estudio)' },
+];
+
+const CATS = {
+  restaurant:  { label: 'Restaurante',        emoji: '🍽️',  color: '#e63946' },
+  fast_food:   { label: 'Comida rápida',      emoji: '🍔',  color: '#f4a261' },
+  cafe:        { label: 'Café / Soda',        emoji: '☕',  color: '#2a9d8f' },
+  bar:         { label: 'Bar / Cantina',      emoji: '🍺',  color: '#7b2d8b' },
+  bakery:      { label: 'Panadería',          emoji: '🥐',  color: '#e07b39' },
+  supermarket: { label: 'Supermercado',       emoji: '🛒',  color: '#1b6ca8' },
+  convenience: { label: 'Pulpería / Mini-súper', emoji: '🏪', color: '#457b9d' },
+  ice_cream:   { label: 'Heladería',          emoji: '🍦',  color: '#e91e8c' },
+  butcher:     { label: 'Carnicería',         emoji: '🥩',  color: '#7d5a50' },
+  other:       { label: 'Otro',               emoji: '🍴',  color: '#6c757d' },
+};
+
+function getCat(tags) {
+  const a = tags.amenity || '', s = tags.shop || '';
+  if (a === 'restaurant')  return 'restaurant';
+  if (a === 'fast_food')   return 'fast_food';
+  if (a === 'cafe')        return 'cafe';
+  if (a === 'bar' || a === 'pub') return 'bar';
+  if (a === 'ice_cream')   return 'ice_cream';
+  if (a === 'bakery' || s === 'bakery' || s === 'pastry') return 'bakery';
+  if (s === 'supermarket') return 'supermarket';
+  if (s === 'convenience' || s === 'greengrocer' || s === 'deli' || s === 'food') return 'convenience';
+  if (s === 'butcher')     return 'butcher';
+  return 'other';
+}
+
+/* ── Distance (Haversine) ─────────────────────────────────────────────────── */
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371000, toR = Math.PI / 180;
+  const dLat = (lat2 - lat1) * toR, dLon = (lon2 - lon1) * toR;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*toR)*Math.cos(lat2*toR)*Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+function fmtDist(m) {
+  return m < 1000 ? Math.round(m) + ' m' : (m/1000).toFixed(1) + ' km';
+}
+
+/* ── Map init ─────────────────────────────────────────────────────────────── */
+const map = L.map('map', { zoomControl: false }).setView(RECINTO, 13);
+
+const layers = {
+  'Mapa base': L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
+    maxZoom: 19
+  }),
+  'Satélite': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '© Esri', maxZoom: 19
+  }),
+  'Calles (OSM)': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>', maxZoom: 19
+  }),
+};
+layers['Mapa base'].addTo(map);
+L.control.layers(layers, {}, { position: 'topright', collapsed: true }).addTo(map);
+L.control.zoom({ position: 'topright' }).addTo(map);
+L.control.scale({ position: 'bottomleft', imperial: false }).addTo(map);
+
+/* ── Radius rings ─────────────────────────────────────────────────────────── */
+RINGS.forEach(ring => {
+  const opts = { radius: ring.r, color: ring.color, weight: 2, fillOpacity: ring.r === 6000 ? 0.04 : 0, fillColor: ring.color };
+  if (ring.dash) opts.dashArray = ring.dash;
+  const circle = L.circle(RECINTO, opts).addTo(map);
+
+  // Label on right edge
+  const edgeLat = RECINTO[0];
+  const edgeLon = RECINTO[1] + ring.r / (111320 * Math.cos(RECINTO[0] * Math.PI / 180));
+  L.tooltip({ permanent: true, direction: 'right', className: 'radius-label', offset: [4, 0] })
+    .setLatLng([edgeLat, edgeLon])
+    .setContent(ring.label)
+    .addTo(map);
+});
+
+/* ── Recinto marker ───────────────────────────────────────────────────────── */
+const recintoIcon = L.divIcon({
+  html: `<div style="position:relative;width:36px;height:36px">
+    <div class="recinto-pulse" style="position:absolute;top:8px;left:8px;width:20px;height:20px"></div>
+    <div style="position:absolute;top:0;left:0;width:36px;height:36px;background:#002f6c;border-radius:50%;
+      border:3px solid #f5c400;display:flex;align-items:center;justify-content:center;font-size:1rem;
+      box-shadow:0 3px 10px rgba(0,0,0,.4);">🎓</div>
+  </div>`,
+  className: '', iconSize: [36, 36], iconAnchor: [18, 18], popupAnchor: [0, -20]
+});
+L.marker(RECINTO, { icon: recintoIcon, zIndexOffset: 2000 })
+  .addTo(map)
+  .bindPopup(`
+    <div class="popup-body">
+      <div class="popup-header">
+        <div class="popup-icon">🎓</div>
+        <div>
+          <div class="popup-title">Recinto de Tacares</div>
+          <span class="popup-badge" style="background:#002f6c">Universidad de Costa Rica</span>
+        </div>
+      </div>
+      <div class="popup-details">
+        <div class="popup-detail"><span class="pd-icon">📍</span><span>Grecia, Alajuela, Costa Rica</span></div>
+        <div class="popup-detail"><span class="pd-icon">📞</span><span>(506) 2511-7500</span></div>
+        <div class="popup-detail"><span class="pd-icon">🔵</span><span>Punto central del radio de estudio</span></div>
+      </div>
+    </div>`, { className: 'custom-popup' });
+
+/* ── Legend ───────────────────────────────────────────────────────────────── */
+const legendCtrl = L.control({ position: 'bottomright' });
+legendCtrl.onAdd = () => {
+  const d = L.DomUtil.create('div', 'legend-ctrl');
+  d.id = 'legend-ctrl';
+  d.innerHTML = '<h4>Leyenda</h4><div id="legend-cats"></div><hr class="legend-divider">' +
+    RINGS.map(r => `<div class="legend-circle-row">
+      <div class="lc${r.dash ? '' : ' solid'}" style="border-top-color:${r.color};${r.dash ? 'border-top-style:dashed' : ''}"></div>
+      <span>${r.label}</span></div>`).join('') +
+    `<div class="legend-circle-row">
+      <div style="width:14px;height:14px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.85rem">🎓</div>
+      <span>Recinto de Tacares</span></div>`;
+  L.DomEvent.disableClickPropagation(d);
+  return d;
+};
+legendCtrl.addTo(map);
+
+/* ── Center button ─────────────────────────────────────────────────────────── */
+document.getElementById('btn-center').addEventListener('click', () => {
+  map.flyTo(RECINTO, 13, { duration: 1 });
+});
+
+/* ── State ─────────────────────────────────────────────────────────────────── */
+let allPlaces = [];
+let activeFilter = 'all';
+let sortMode = 'name';
+let highlightedId = null;
+const markerMap = {};
+const clusterGroup = L.markerClusterGroup({
+  maxClusterRadius: 40,
+  iconCreateFunction: c => {
+    const n = c.getChildCount();
+    const size = n < 10 ? 32 : n < 50 ? 38 : 44;
+    return L.divIcon({
+      html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:#002f6c;
+        border:3px solid #f5c400;color:white;font-weight:800;font-size:${n<10?'.9':'0.8'}rem;
+        display:flex;align-items:center;justify-content:center;
+        box-shadow:0 2px 8px rgba(0,0,0,.35)">${n}</div>`,
+      className: '', iconSize: [size, size]
+    });
+  }
+}).addTo(map);
+
+/* ── Marker icon ──────────────────────────────────────────────────────────── */
+function makeIcon(cat, highlight = false) {
+  const c = CATS[cat];
+  const border = highlight ? '#ffd700' : 'white';
+  const shadow = highlight ? '0 0 0 3px rgba(255,215,0,.5),0 3px 10px rgba(0,0,0,.35)' : '0 2px 8px rgba(0,0,0,.3)';
+  return L.divIcon({
+    html: `<div style="width:30px;height:30px;border-radius:50%;background:${c.color};
+      border:2.5px solid ${border};display:flex;align-items:center;justify-content:center;
+      font-size:.88rem;box-shadow:${shadow};transition:all .2s">${c.emoji}</div>`,
+    className: '', iconSize: [30, 30], iconAnchor: [15, 15], popupAnchor: [0, -17]
+  });
+}
+
+/* ── Build popup content ──────────────────────────────────────────────────── */
+function buildPopup(p) {
+  const c = CATS[p.cat];
+  const addrLine = p.addr ? `<div class="popup-detail"><span class="pd-icon">🏠</span><span>${p.addr}</span></div>` : '';
+  const phoneLine = p.phone ? `<div class="popup-detail"><span class="pd-icon">📞</span><span>${p.phone}</span></div>` : '';
+  const hoursLine = p.hours ? `<div class="popup-detail"><span class="pd-icon">⏰</span><span>${p.hours}</span></div>` : '';
+  return `<div class="popup-body">
+    <div class="popup-header">
+      <div class="popup-icon">${c.emoji}</div>
+      <div>
+        <div class="popup-title">${p.name}</div>
+        <span class="popup-badge" style="background:${c.color}">${c.label}</span>
+      </div>
+    </div>
+    <div class="popup-details">
+      <div class="popup-detail"><span class="pd-icon">📏</span><span><b>${fmtDist(p.dist)}</b> del Recinto de Tacares</span></div>
+      ${addrLine}${phoneLine}${hoursLine}
+    </div>
+  </div>`;
+}
+
+/* ── Render list ──────────────────────────────────────────────────────────── */
+function getFiltered() {
+  const q = document.getElementById('search-input').value.toLowerCase().trim();
+  return allPlaces.filter(p =>
+    (activeFilter === 'all' || p.cat === activeFilter) &&
+    (!q || p.name.toLowerCase().includes(q))
+  );
+}
+
+function getSorted(list) {
+  if (sortMode === 'dist') return [...list].sort((a, b) => a.dist - b.dist);
+  if (sortMode === 'cat')  return [...list].sort((a, b) => a.cat.localeCompare(b.cat) || a.name.localeCompare(b.name));
+  return [...list].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function renderList() {
+  const filtered = getSorted(getFiltered());
+  const el = document.getElementById('place-list');
+  document.getElementById('stat-visible').textContent = filtered.length;
+
+  if (!filtered.length) {
+    el.innerHTML = `<div class="empty-state"><div class="emoji">🔍</div><p>Sin resultados para ese filtro o búsqueda.</p></div>`;
+    return;
+  }
+
+  el.innerHTML = filtered.map(p => {
+    const c = CATS[p.cat];
+    const isHL = p.id === highlightedId;
+    return `<div class="place-item${isHL ? ' highlighted' : ''}" data-id="${p.id}">
+      <div class="place-icon" style="background:${c.color}20">${c.emoji}</div>
+      <div class="place-info">
+        <div class="place-name">${p.name}</div>
+        <div class="place-meta">
+          <span class="place-type-tag" style="background:${c.color}">${c.label}</span>
+          <span class="place-dist">${fmtDist(p.dist)}</span>
+        </div>
+      </div>
+      <span class="place-arrow">›</span>
+    </div>`;
+  }).join('');
+
+  el.querySelectorAll('.place-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const p = allPlaces.find(x => x.id === item.dataset.id);
+      if (!p) return;
+      highlightedId = p.id;
+      map.flyTo([p.lat, p.lon], 17, { duration: 0.8 });
+      // Expand cluster if needed
+      clusterGroup.zoomToShowLayer(markerMap[p.id], () => {
+        markerMap[p.id]?.openPopup();
+      });
+      renderList();
+    });
+  });
+}
+
+/* ── Render markers ──────────────────────────────────────────────────────── */
+function renderMarkers() {
+  clusterGroup.clearLayers();
+  Object.keys(markerMap).forEach(k => delete markerMap[k]);
+  const filtered = getFiltered();
+  filtered.forEach(p => {
+    const m = L.marker([p.lat, p.lon], { icon: makeIcon(p.cat, p.id === highlightedId) })
+      .bindPopup(buildPopup(p), { className: 'custom-popup', maxWidth: 260 });
+    m.on('click', () => { highlightedId = p.id; renderList(); });
+    clusterGroup.addLayer(m);
+    markerMap[p.id] = m;
+  });
+}
+
+/* ── Category pills ──────────────────────────────────────────────────────── */
+function buildCatPills(cats) {
+  const grid = document.getElementById('cat-grid');
+  const counts = {};
+  allPlaces.forEach(p => counts[p.cat] = (counts[p.cat] || 0) + 1);
+
+  const allPill = document.createElement('div');
+  allPill.className = 'cat-pill active';
+  allPill.dataset.cat = 'all';
+  allPill.style.cssText = `background:#002f6c;color:white;border-color:#002f6c`;
+  allPill.innerHTML = `<span>Todos</span><span style="background:rgba(255,255,255,.25);padding:0 5px;border-radius:8px;font-size:.68rem">${allPlaces.length}</span>`;
+  grid.appendChild(allPill);
+
+  cats.forEach(cat => {
+    const c = CATS[cat];
+    const pill = document.createElement('div');
+    pill.className = 'cat-pill';
+    pill.dataset.cat = cat;
+    pill.style.cssText = `border-color:${c.color};color:${c.color}`;
+    pill.innerHTML = `${c.emoji} <span>${c.label}</span><span style="background:${c.color}20;padding:0 5px;border-radius:8px;font-size:.68rem">${counts[cat]||0}</span>`;
+    grid.appendChild(pill);
+  });
+
+  grid.addEventListener('click', e => {
+    const pill = e.target.closest('.cat-pill');
+    if (!pill) return;
+    const cat = pill.dataset.cat;
+    activeFilter = cat;
+    highlightedId = null;
+    grid.querySelectorAll('.cat-pill').forEach(p => {
+      const pc = p.dataset.cat;
+      p.classList.remove('active');
+      if (pc === 'all') {
+        p.style.cssText = 'border-color:#aaa;color:#555';
+      } else {
+        const cc = CATS[pc]; p.style.cssText = `border-color:${cc.color};color:${cc.color}`;
+      }
+    });
+    pill.classList.add('active');
+    if (cat === 'all') pill.style.cssText = 'background:#002f6c;color:white;border-color:#002f6c';
+    else { const cc = CATS[cat]; pill.style.cssText = `background:${cc.color};color:white;border-color:${cc.color}`; }
+    renderList(); renderMarkers();
+  });
+
+  // Legend cats
+  const lgd = document.getElementById('legend-cats');
+  lgd.innerHTML = cats.map(cat => {
+    const c = CATS[cat];
+    return `<div class="legend-row"><div class="ld" style="background:${c.color}"></div><span>${c.emoji} ${c.label} (${counts[cat]||0})</span></div>`;
+  }).join('');
+}
+
+/* ── Sort buttons ─────────────────────────────────────────────────────────── */
+document.querySelectorAll('.sort-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    sortMode = btn.dataset.sort;
+    renderList();
+  });
+});
+
+/* ── Search ──────────────────────────────────────────────────────────────── */
+document.getElementById('search-input').addEventListener('input', () => {
+  highlightedId = null;
+  renderList(); renderMarkers();
+});
+
+/* ── Overpass fetch ──────────────────────────────────────────────────────── */
+setProgress(20);
+
+const overpassQuery = `
+[out:json][timeout:60];
+(
+  node["amenity"~"^(restaurant|cafe|fast_food|bar|pub|bakery|food_court|ice_cream|juice_bar)$"](around:${RADIUS_M},${RECINTO[0]},${RECINTO[1]});
+  way ["amenity"~"^(restaurant|cafe|fast_food|bar|pub|bakery|food_court|ice_cream|juice_bar)$"](around:${RADIUS_M},${RECINTO[0]},${RECINTO[1]});
+  node["shop"~"^(supermarket|convenience|bakery|pastry|butcher|deli|greengrocer|food)$"](around:${RADIUS_M},${RECINTO[0]},${RECINTO[1]});
+  way ["shop"~"^(supermarket|convenience|bakery|pastry|butcher|deli|greengrocer|food)$"](around:${RADIUS_M},${RECINTO[0]},${RECINTO[1]});
+);
+out center tags;
+`;
+
+function setProgress(pct) {
+  document.getElementById('load-bar').style.width = pct + '%';
+}
+
+fetch('https://overpass-api.de/api/interpreter', {
+  method: 'POST',
+  body: 'data=' + encodeURIComponent(overpassQuery)
+})
+.then(r => { setProgress(70); return r.json(); })
+.then(data => {
+  setProgress(90);
+  const seen = new Set();
+  allPlaces = data.elements
+    .filter(el => (el.lat ?? el.center?.lat) && (el.lon ?? el.center?.lon))
+    .map(el => {
+      const tags = el.tags || {};
+      const lat  = el.lat ?? el.center.lat;
+      const lon  = el.lon ?? el.center.lon;
+      const name = tags.name || tags['name:es'] || tags.brand || '(sin nombre)';
+      const cat  = getCat(tags);
+      const dist = haversine(RECINTO[0], RECINTO[1], lat, lon);
+      const addr = [tags['addr:street'], tags['addr:housenumber']].filter(Boolean).join(' ');
+      const phone = tags.phone || tags['contact:phone'] || '';
+      const hours = tags['opening_hours'] || '';
+      return { id: String(el.id), lat, lon, name, cat, dist, addr, phone, hours };
+    })
+    .filter(p => {
+      const key = `${p.name.toLowerCase()}|${Math.round(p.lat*500)}|${Math.round(p.lon*500)}`;
+      if (seen.has(key)) return false;
+      seen.add(key); return true;
+    });
+
+  // Stats
+  document.getElementById('hdr-total').textContent = allPlaces.length;
+  document.getElementById('stat-visible').textContent = allPlaces.length;
+  const catSet = [...new Set(allPlaces.map(p => p.cat))];
+  document.getElementById('stat-cats').textContent = catSet.length;
+  const nearest = allPlaces.reduce((a, b) => b.dist < a.dist ? b : a, allPlaces[0]);
+  document.getElementById('stat-nearest').textContent = nearest ? fmtDist(nearest.dist) : '–';
+
+  buildCatPills(catSet.sort());
+  renderList();
+  renderMarkers();
+
+  setProgress(100);
+  setTimeout(() => document.getElementById('loading').classList.add('hidden'), 350);
+})
+.catch(err => {
+  console.error(err);
+  document.getElementById('loading').innerHTML = `
+    <div style="text-align:center;padding:30px;max-width:340px">
+      <div style="font-size:2.5rem;margin-bottom:12px">⚠️</div>
+      <h2 style="font-size:1.05rem;margin-bottom:8px">No se pudo cargar el mapa</h2>
+      <p style="font-size:.8rem;opacity:.75;margin-bottom:20px">Verificá tu conexión a internet e intentá de nuevo.</p>
+      <button onclick="location.reload()" style="padding:9px 22px;border-radius:8px;border:none;
+        background:#f5c400;color:#002f6c;font-weight:800;font-size:.85rem;cursor:pointer">
+        🔄 Reintentar
+      </button>
+    </div>`;
+});
+</script>
+</body>
+</html>
